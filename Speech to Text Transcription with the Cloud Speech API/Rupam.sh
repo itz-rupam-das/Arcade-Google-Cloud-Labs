@@ -1,6 +1,7 @@
 #!/bin/bash
+set -Eeuo pipefail
 
-# Define color variables
+# ===================== COLOR & FORMAT =====================
 BLACK_TEXT=$'\033[0;90m'
 RED_TEXT=$'\033[0;91m'
 GREEN_TEXT=$'\033[0;92m'
@@ -10,106 +11,147 @@ MAGENTA_TEXT=$'\033[0;95m'
 CYAN_TEXT=$'\033[0;96m'
 WHITE_TEXT=$'\033[0;97m'
 
-NO_COLOR=$'\033[0m'
-RESET_FORMAT=$'\033[0m'
-
-# Define text formatting variables
 BOLD_TEXT=$'\033[1m'
 UNDERLINE_TEXT=$'\033[4m'
-BLINK_TEXT=$'\033[5m'
-REVERSE_TEXT=$'\033[7m'
+DIM_TEXT=$'\033[2m'
+RESET_FORMAT=$'\033[0m'
+
+START_TIME=$(date +%s)
+
+# ===================== UI UTILITIES ======================
+spinner() {
+  local pid=$!
+  local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+  local i=0
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$(( (i+1) %10 ))
+    printf "\r${CYAN_TEXT}${spin:$i:1}${RESET_FORMAT} $1"
+    sleep 0.1
+  done
+  wait "$pid"
+  printf "\r${GREEN_TEXT}✔${RESET_FORMAT} $1\n"
+}
+
+divider() {
+  echo "${DIM_TEXT}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET_FORMAT}"
+}
+
+fatal() {
+  echo -e "\n${RED_TEXT}${BOLD_TEXT}✖ ERROR:${RESET_FORMAT} $1"
+  exit 1
+}
+
+trap 'fatal "Unexpected failure at line $LINENO"' ERR
 
 clear
 
-# Welcome message
+# ===================== HEADER =============================
 echo "${CYAN_TEXT}${BOLD_TEXT}==================================================================${RESET_FORMAT}"
-echo "${CYAN_TEXT}${BOLD_TEXT}      ITZ_RUPAM - INITIATING EXECUTION...  ${RESET_FORMAT}"
+echo "${CYAN_TEXT}${BOLD_TEXT}        ITZ RUPAM — SPEECH TO TEXT LAB EXECUTION                  ${RESET_FORMAT}"
 echo "${CYAN_TEXT}${BOLD_TEXT}==================================================================${RESET_FORMAT}"
 echo
 
-cat > prepare_disk.sh <<'EOF_END'
+# ===================== TASK 1–3 ===========================
+divider
+echo "${YELLOW_TEXT}${BOLD_TEXT}🔧 TASK 1–3 : ENGLISH SPEECH TRANSCRIPTION — ITZ RUPAM${RESET_FORMAT}"
 
-gcloud services enable apikeys.googleapis.com
+cat > prepare_disk.sh <<'EOF'
+set -Eeuo pipefail
 
-gcloud alpha services api-keys create --display-name="awesome" 
+gcloud services enable apikeys.googleapis.com speech.googleapis.com
 
-KEY_NAME=$(gcloud alpha services api-keys list --format="value(name)" --filter "displayName=awesome")
+gcloud alpha services api-keys create --display-name="awesome" &>/dev/null
+sleep 5
 
-API_KEY=$(gcloud alpha services api-keys get-key-string $KEY_NAME --format="value(keyString)")
+KEY_NAME=$(gcloud alpha services api-keys list \
+  --filter="displayName=awesome" \
+  --format="value(name)")
 
-cat > request.json <<EOF
+API_KEY=$(gcloud alpha services api-keys get-key-string "$KEY_NAME" \
+  --format="value(keyString)")
 
+cat > request.json <<JSON
 {
-    "config": {
-            "encoding":"FLAC",
-            "languageCode": "en-US"
-    },
-    "audio": {
-            "uri":"gs://cloud-samples-data/speech/brooklyn_bridge.flac"
-    }
+  "config": {
+    "encoding": "FLAC",
+    "languageCode": "en-US"
+  },
+  "audio": {
+    "uri": "gs://cloud-samples-data/speech/brooklyn_bridge.flac"
+  }
 }
+JSON
 
-EOF
-
-curl -s -X POST -H "Content-Type: application/json" --data-binary @request.json \
-"https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" > result.json
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  --data-binary @request.json \
+  "https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" \
+  > result.json
 
 cat result.json
-
-EOF_END
-export ZONE=$(gcloud compute instances list linux-instance --format 'csv[no-heading](zone)')
-
-gcloud compute scp prepare_disk.sh linux-instance:/tmp --project=$DEVSHELL_PROJECT_ID --zone=$ZONE --quiet
-gcloud compute ssh linux-instance --project=$DEVSHELL_PROJECT_ID --zone=$ZONE --quiet --command="bash /tmp/prepare_disk.sh"
-
-read -p "CHECK MY PROGRESS DONE TILL TASK 3 (Y/N)?" response
-
-if [[ "$response" =~ ^[Yy]$ ]]; then
-        echo "Proceeding with next steps!"
-else
-        echo "Please check the progress before proceeding."
-fi
-
-
-cat > prepare_disk.sh <<'EOF_END'
-
-KEY_NAME=$(gcloud alpha services api-keys list --format="value(name)" --filter "displayName=awesome")
-
-API_KEY=$(gcloud alpha services api-keys get-key-string $KEY_NAME --format="value(keyString)")
-
-rm -f request.json
-
-cat >> request.json <<EOF
-
- {
-    "config": {
-            "encoding":"FLAC",
-            "languageCode": "fr"
-    },
-    "audio": {
-            "uri":"gs://cloud-samples-data/speech/corbeau_renard.flac"
-    }
-}
-
 EOF
 
-curl -s -X POST -H "Content-Type: application/json" --data-binary @request.json \
-"https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" > result.json
+ZONE=$(gcloud compute instances list linux-instance --format='csv[no-heading](zone)')
+(gcloud compute scp prepare_disk.sh linux-instance:/tmp --zone="$ZONE" --quiet) &
+spinner "Uploading English task to VM"
+
+(gcloud compute ssh linux-instance --zone="$ZONE" --quiet \
+  --command="bash /tmp/prepare_disk.sh") &
+spinner "English transcription completed"
+
+read -p "CHECK MY PROGRESS DONE TILL TASK 3 (Y/N)? " response
+[[ "$response" =~ ^[Yy]$ ]] || fatal "Progress check not confirmed"
+
+# ===================== TASK 4 =============================
+divider
+echo "${YELLOW_TEXT}${BOLD_TEXT}🌍 TASK 4 : FRENCH SPEECH TRANSCRIPTION — ITZ RUPAM${RESET_FORMAT}"
+
+cat > prepare_disk.sh <<'EOF'
+set -Eeuo pipefail
+
+KEY_NAME=$(gcloud alpha services api-keys list \
+  --filter="displayName=awesome" \
+  --format="value(name)")
+
+API_KEY=$(gcloud alpha services api-keys get-key-string "$KEY_NAME" \
+  --format="value(keyString)")
+
+cat > request.json <<JSON
+{
+  "config": {
+    "encoding": "FLAC",
+    "languageCode": "fr"
+  },
+  "audio": {
+    "uri": "gs://cloud-samples-data/speech/corbeau_renard.flac"
+  }
+}
+JSON
+
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  --data-binary @request.json \
+  "https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" \
+  > result.json
 
 cat result.json
+EOF
 
-EOF_END
+(gcloud compute scp prepare_disk.sh linux-instance:/tmp --zone="$ZONE" --quiet) &
+spinner "Uploading French task to VM"
 
-export ZONE=$(gcloud compute instances list linux-instance --format 'csv[no-heading](zone)')
+(gcloud compute ssh linux-instance --zone="$ZONE" --quiet \
+  --command="bash /tmp/prepare_disk.sh") &
+spinner "French transcription completed"
 
-gcloud compute scp prepare_disk.sh linux-instance:/tmp --project=$DEVSHELL_PROJECT_ID --zone=$ZONE --quiet
+# ===================== COMPLETION ========================
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
 
-gcloud compute ssh linux-instance --project=$DEVSHELL_PROJECT_ID --zone=$ZONE --quiet --command="bash /tmp/prepare_disk.sh"
-
-
-# Final message
-echo
-echo "${CYAN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
-echo "${CYAN_TEXT}${BOLD_TEXT}              LAB COMPLETED SUCCESSFULLY!              ${RESET_FORMAT}"
-echo "${CYAN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
-echo
+divider
+echo "${GREEN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
+echo "${GREEN_TEXT}${BOLD_TEXT}  LAB IS SUCCESSFULLY COMPLETED — CONGRATULATIONS       ${RESET_FORMAT}"
+echo "${GREEN_TEXT}${BOLD_TEXT}                    ITZ RUPAM                          ${RESET_FORMAT}"
+echo "${GREEN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
+echo "${DIM_TEXT}Execution time: ${DURATION}s${RESET_FORMAT}"
+divider
