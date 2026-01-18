@@ -1,7 +1,6 @@
 #!/bin/bash
-set -Eeuo pipefail
 
-# ===================== COLOR & FORMAT =====================
+# Define color variables
 BLACK_TEXT=$'\033[0;90m'
 RED_TEXT=$'\033[0;91m'
 GREEN_TEXT=$'\033[0;92m'
@@ -11,211 +10,233 @@ MAGENTA_TEXT=$'\033[0;95m'
 CYAN_TEXT=$'\033[0;96m'
 WHITE_TEXT=$'\033[0;97m'
 
-BOLD_TEXT=$'\033[1m'
-UNDERLINE_TEXT=$'\033[4m'
-DIM_TEXT=$'\033[2m'
+NO_COLOR=$'\033[0m'
 RESET_FORMAT=$'\033[0m'
 
-START_TIME=$(date +%s)
-
-# ===================== UI UTILITIES ======================
-spinner() {
-  local pid=$!
-  local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-  local i=0
-  while kill -0 "$pid" 2>/dev/null; do
-    i=$(( (i+1) %10 ))
-    printf "\r${CYAN_TEXT}${spin:$i:1}${RESET_FORMAT} $1"
-    sleep 0.1
-  done
-  wait "$pid"
-  printf "\r${GREEN_TEXT}✔${RESET_FORMAT} $1\n"
-}
-
-divider() {
-  echo "${DIM_TEXT}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET_FORMAT}"
-}
-
-fatal() {
-  echo -e "\n${RED_TEXT}${BOLD_TEXT}✖ ERROR:${RESET_FORMAT} $1"
-  exit 1
-}
-
-trap 'fatal "Unexpected failure at line $LINENO"' ERR
+# Define text formatting variables
+BOLD_TEXT=$'\033[1m'
+UNDERLINE_TEXT=$'\033[4m'
 
 clear
 
-# ===================== HEADER =============================
+# Welcome message
 echo "${CYAN_TEXT}${BOLD_TEXT}==================================================================${RESET_FORMAT}"
-echo "${CYAN_TEXT}${BOLD_TEXT}   GOOGLE CLOUD MONITORING & GKE LAB — ITZ RUPAM                 ${RESET_FORMAT}"
+echo "${CYAN_TEXT}${BOLD_TEXT}      Itz_Rupam_Das - INITIATING EXECUTION...  ${RESET_FORMAT}"
 echo "${CYAN_TEXT}${BOLD_TEXT}==================================================================${RESET_FORMAT}"
 echo
 
-# ===================== STEP 1 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}🔧 STEP 1: PROJECT, ZONE & REGION SETUP — ITZ RUPAM${RESET_FORMAT}"
+# Step 1: Set Project ID, Compute Zone & Region
+echo "${BOLD_TEXT}${YELLOW_TEXT}Setting Project ID, Compute Zone & Region${RESET_FORMAT}"
+export PROJECT_ID=$(gcloud info --format='value(config.project)')
 
-PROJECT_ID=$(gcloud info --format='value(config.project)')
-ZONE=$(gcloud compute project-info describe \
-  --format="value(commonInstanceMetadata.items[google-compute-default-zone])")
-REGION=$(gcloud compute project-info describe \
-  --format="value(commonInstanceMetadata.items[google-compute-default-region])")
+export ZONE=$(gcloud compute project-info describe \
+--format="value(commonInstanceMetadata.items[google-compute-default-zone])")
 
-gcloud config set compute/zone "$ZONE" &>/dev/null
+export REGION=$(gcloud compute project-info describe \
+--format="value(commonInstanceMetadata.items[google-compute-default-region])")
 
-echo "${GREEN_TEXT}✔ Project:${RESET_FORMAT} $PROJECT_ID"
-echo "${GREEN_TEXT}✔ Zone:${RESET_FORMAT} $ZONE"
-echo "${GREEN_TEXT}✔ Region:${RESET_FORMAT} $REGION"
+gcloud config set compute/zone $ZONE
 
-# ===================== STEP 2 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}☸ STEP 2: CREATING GKE CLUSTER — ITZ RUPAM${RESET_FORMAT}"
-(
-gcloud container clusters create gmp-cluster --num-nodes=1 --zone "$ZONE"
-) &
-spinner "GKE cluster created"
+# Step 2: Create Kubernetes Cluster
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating Kubernetes Cluster${RESET_FORMAT}"
+gcloud container clusters create gmp-cluster --num-nodes=1 --zone $ZONE
 
-# ===================== STEP 3 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}📊 STEP 3: LOG-BASED METRIC (STOPPED VMS) — ITZ RUPAM${RESET_FORMAT}"
-(
+# Step 3: Create Logging Metric for Stopped VMs
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating log-based metric for stopped VMs${RESET_FORMAT}"
 gcloud logging metrics create stopped-vm \
-  --description="Metric for stopped VMs" \
-  --log-filter='resource.type="gce_instance" protoPayload.methodName="v1.compute.instances.stop"'
-) &
-spinner "Stopped VM metric created"
+    --description="Metric for stopped VMs" \
+    --log-filter='resource.type="gce_instance" protoPayload.methodName="v1.compute.instances.stop"'
 
-# ===================== STEP 4 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}🔔 STEP 4: PUB/SUB NOTIFICATION CHANNEL — ITZ RUPAM${RESET_FORMAT}"
-
-cat > pubsub-channel.json <<EOF
+# Step 4: Create Pub/Sub notification channel config file
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating Pub/Sub notification channel config file${RESET_FORMAT}"
+cat > pubsub-channel.json <<EOF_END
 {
   "type": "pubsub",
   "displayName": "awesome",
-  "description": "Notification Channel",
+  "description": "Hiiii There !!",
   "labels": {
     "topic": "projects/$DEVSHELL_PROJECT_ID/topics/notificationTopic"
   }
 }
-EOF
+EOF_END
 
-(
-gcloud beta monitoring channels create \
-  --channel-content-from-file=pubsub-channel.json
-) &
-spinner "Notification channel created"
+# Step 5: Create the Pub/Sub notification channel
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating Pub/Sub notification channel${RESET_FORMAT}"
+gcloud beta monitoring channels create --channel-content-from-file=pubsub-channel.json
 
-CHANNEL_ID=$(gcloud beta monitoring channels list \
-  --format="value(name)" | head -n 1)
+# Step 6: Retrieve Notification Channel ID
+echo "${BOLD}${YELLOW_TEXT}Retrieving Notification Channel ID${RESET_FORMAT}"
+email_channel_info=$(gcloud beta monitoring channels list)
+email_channel_id=$(echo "$email_channel_info" | grep -oP 'name: \K[^ ]+' | head -n 1)
 
-# ===================== STEP 5 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}🚨 STEP 5: ALERT POLICY (STOPPED VMS) — ITZ RUPAM${RESET_FORMAT}"
-
-cat > stopped-vm-alert-policy.json <<EOF
+# Step 7: Create Alert Policy for Stopped VMs
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating alert policy for stopped VMs${RESET_FORMAT}"
+cat > stopped-vm-alert-policy.json <<EOF_END
 {
   "displayName": "stopped vm",
+  "documentation": {
+    "content": "Documentation content for the stopped vm alert policy",
+    "mime_type": "text/markdown"
+  },
+  "userLabels": {},
   "conditions": [
     {
-      "displayName": "Log match",
+      "displayName": "Log match condition",
       "conditionMatchedLog": {
         "filter": "resource.type=\"gce_instance\" protoPayload.methodName=\"v1.compute.instances.stop\""
       }
     }
   ],
-  "notificationChannels": ["$CHANNEL_ID"],
-  "enabled": true
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "3600s"
+  },
+  "combiner": "OR",
+  "enabled": true,
+  "notificationChannels": [
+    "$email_channel_id"
+  ]
 }
-EOF
 
-(
-gcloud alpha monitoring policies create \
-  --policy-from-file=stopped-vm-alert-policy.json
-) &
-spinner "Stopped VM alert policy deployed"
 
-# ===================== STEP 6 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}📦 STEP 6: ARTIFACT REGISTRY — ITZ RUPAM${RESET_FORMAT}"
-(
-gcloud artifacts repositories create docker-repo \
-  --repository-format=docker \
-  --location="$REGION" \
-  --description="Docker repository"
-) &
-spinner "Artifact Registry ready"
+EOF_END
 
-# ===================== STEP 7 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}🐳 STEP 7: DOCKER IMAGE SETUP — ITZ RUPAM${RESET_FORMAT}"
-(
-wget https://storage.googleapis.com/spls/gsp1024/flask_telemetry.zip
-unzip -o flask_telemetry.zip
-docker load -i flask_telemetry.tar
-docker tag gcr.io/ops-demo-330920/flask_telemetry:* \
-"$REGION-docker.pkg.dev/$DEVSHELL_PROJECT_ID/docker-repo/flask-telemetry:v1"
-docker push "$REGION-docker.pkg.dev/$DEVSHELL_PROJECT_ID/docker-repo/flask-telemetry:v1"
-) &
-spinner "Docker image pushed"
+# Step 8: Deploy Alert Policy
+echo "${BOLD_TEXT}${YELLOW_TEXT}Deploying alert policy for stopped VMs${RESET_FORMAT}"
+gcloud alpha monitoring policies create --policy-from-file=stopped-vm-alert-policy.json
 
-# ===================== STEP 8 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}📡 STEP 8: KUBERNETES DEPLOYMENT — ITZ RUPAM${RESET_FORMAT}"
+# Step 9: Create Artifact Registry
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating Docker Artifact Registry${RESET_FORMAT}"
+gcloud artifacts repositories create docker-repo --repository-format=docker \
+    --location=$REGION --description="Docker repository" \
+    --project=$DEVSHELL_PROJECT_ID
 
-gcloud container clusters get-credentials gmp-cluster &>/dev/null
-kubectl create ns gmp-test || true
+# Step 10: Download and Load Docker Image
+echo "${BOLD_TEXT}${YELLOW_TEXT}Downloading and loading Docker image${RESET_FORMAT}"
+ wget https://storage.googleapis.com/spls/gsp1024/flask_telemetry.zip
+ unzip flask_telemetry.zip
+ docker load -i flask_telemetry.tar
 
+# Step 11: Tag and Push Docker Image
+echo "${BOLD_TEXT}${YELLOW_TEXT}Tagging and pushing Docker image${RESET_FORMAT}"
+docker tag gcr.io/ops-demo-330920/flask_telemetry:61a2a7aabc7077ef474eb24f4b69faeab47deed9 \
+$REGION-docker.pkg.dev/$DEVSHELL_PROJECT_ID/docker-repo/flask-telemetry:v1
+
+docker push $REGION-docker.pkg.dev/$DEVSHELL_PROJECT_ID/docker-repo/flask-telemetry:v1
+
+gcloud container clusters list
+
+# Step 12: Get Cluster Credentials
+echo "${BOLD_TEXT}${YELLOW_TEXT}Getting Kubernetes cluster credentials${RESET_FORMAT}"
+gcloud container clusters get-credentials gmp-cluster
+
+# Step 13: Create Namespace
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating Kubernetes namespace${RESET_FORMAT}"
+kubectl create ns gmp-test
+
+# Step 14: Download and Unpack Prometheus Setup
+echo "${BOLD_TEXT}${YELLOW_TEXT}Downloading and unpacking Prometheus setup files${RESET_FORMAT}"
 wget https://storage.googleapis.com/spls/gsp1024/gmp_prom_setup.zip
-unzip -o gmp_prom_setup.zip
+unzip gmp_prom_setup.zip
 cd gmp_prom_setup
 
+# Step 15: Update Deployment with Docker Image
+echo "${BOLD_TEXT}${YELLOW_TEXT}Updating deployment manifest with Docker image URL${RESET_FORMAT}"
 sed -i "s|<ARTIFACT REGISTRY IMAGE NAME>|$REGION-docker.pkg.dev/$DEVSHELL_PROJECT_ID/docker-repo/flask-telemetry:v1|g" flask_deployment.yaml
 
+# Step 16: Apply Kubernetes Resources
+echo "${BOLD_TEXT}${YELLOW_TEXT}Applying Kubernetes deployment and service${RESET_FORMAT}"
 kubectl -n gmp-test apply -f flask_deployment.yaml
+
 kubectl -n gmp-test apply -f flask_service.yaml
 
-# ===================== STEP 9 =============================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}📉 STEP 9: ERROR METRIC & ALERT — ITZ RUPAM${RESET_FORMAT}"
+# Step 17: Check Services
+echo "${BOLD_TEXT}${YELLOW_TEXT}Checking Kubernetes services${RESET_FORMAT}"
+kubectl get services -n gmp-test
 
+# Step 18: Create Metric for hello-app Errors
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating log-based metric for hello-app errors${RESET_FORMAT}"
 gcloud logging metrics create hello-app-error \
-  --description="hello-app errors" \
-  --log-filter='severity=ERROR resource.labels.container_name="hello-app"'
+    --description="Metric for hello-app errors" \
+    --log-filter='severity=ERROR
+resource.labels.container_name="hello-app"
+textPayload: "ERROR: 404 Error page not found"'
 
 sleep 30
 
-cat > hello-alert.json <<EOF
+# Step 19: Create Alert Policy for hello-app Errors
+echo "${BOLD_TEXT}${YELLOW_TEXT}Creating alert policy for hello-app errors${RESET_FORMAT}"
+cat > awesome.json <<'EOF_END'
 {
-  "displayName": "hello app error alert",
+  "displayName": "log based metric alert",
+  "userLabels": {},
   "conditions": [
     {
+      "displayName": "New condition",
       "conditionThreshold": {
-        "filter": "metric.type=\"logging.googleapis.com/user/hello-app-error\"",
+        "filter": 'metric.type="logging.googleapis.com/user/hello-app-error" AND resource.type="global"',
+        "aggregations": [
+          {
+            "alignmentPeriod": "120s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "perSeriesAligner": "ALIGN_DELTA"
+          }
+        ],
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 0
+        "duration": "0s",
+        "trigger": {
+          "count": 1
+        }
       }
     }
   ],
-  "enabled": true
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "combiner": "OR",
+  "enabled": true,
+  "notificationChannels": [],
+  "severity": "SEVERITY_UNSPECIFIED"
 }
-EOF
 
-gcloud alpha monitoring policies create --policy-from-file=hello-alert.json
+EOF_END
 
-# ===================== CLEANUP ===========================
-divider
-echo "${YELLOW_TEXT}${BOLD_TEXT}🧹 CLEANUP FILES — ITZ RUPAM${RESET_FORMAT}"
-rm -f gsp* arc* shell* || true
+# Step 20: Deploy Alert Policy
+echo "${BOLD_TEXT}${YELLOW_TEXT}Deploying alert policy for hello-app errors${RESET_FORMAT}"
+gcloud alpha monitoring policies create --policy-from-file=awesome.json
 
-# ===================== COMPLETION ========================
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
+# Step 21: Trigger Errors
+echo "${BOLD_TEXT}${YELLOW_TEXT}Triggering errors to generate logs for metric${RESET_FORMAT}"
+timeout 120 bash -c -- 'while true; do curl $(kubectl get services -n gmp-test -o jsonpath='{.items[*].status.loadBalancer.ingress[0].ip}')/error; sleep $((RANDOM % 4)) ; done'
 
-divider
-echo "${GREEN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
-echo "${GREEN_TEXT}${BOLD_TEXT}  LAB IS SUCCESSFULLY COMPLETED — CONGRATULATIONS       ${RESET_FORMAT}"
-echo "${GREEN_TEXT}${BOLD_TEXT}                    ITZ RUPAM                          ${RESET_FORMAT}"
-echo "${GREEN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
-echo "${DIM_TEXT}Execution time: ${DURATION}s${RESET_FORMAT}"
-divider
+echo
+
+# Display completion message
+echo "${BOLD_TEXT}${YELLOW_TEXT}Lab execution completed successfully!${RESET_FORMAT}"
+echo "${BOLD_TEXT}${YELLOW_TEXT}Thank you for using Dr. Abhishek Cloud Tutorials${RESET_FORMAT}"
+
+remove_files() {
+    # Loop through all files in the current directory
+    for file in *; do
+        # Check if the file name starts with "gsp", "arc", or "shell"
+        if [[ "$file" == gsp* || "$file" == arc* || "$file" == shell* ]]; then
+            # Check if it's a regular file (not a directory)
+            if [[ -f "$file" ]]; then
+                # Remove the file and echo the file name
+                rm "$file"
+                echo "File removed: $file"
+            fi
+        fi
+    done
+}
+
+remove_files
+
+# Final message
+echo
+echo "${CYAN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
+echo "${CYAN_TEXT}${BOLD_TEXT}              LAB COMPLETED SUCCESSFULLY!              ${RESET_FORMAT}"
+echo "${CYAN_TEXT}${BOLD_TEXT}=======================================================${RESET_FORMAT}"
+echo
