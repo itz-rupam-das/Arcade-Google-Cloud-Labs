@@ -15,9 +15,10 @@
 ## ☁️ Run in Cloud Shell:
 
 ```bash
-curl -LO raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/blob/main/Speech%20to%20Text%20Transcription%20with%20the%20Cloud%20Speech%20API/Rupam.sh
-sudo chmod +x Rupam.sh 
+curl -LO "https://raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/main/Speech%20to%20Text%20Transcription%20with%20the%20Cloud%20Speech%20API/Rupam.sh"
+sudo chmod +x Rupam.sh
 ./Rupam.sh
+
 ```
 
 </div>
