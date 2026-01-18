@@ -15,7 +15,7 @@
 ## ☁️ Run in Cloud Shell:
 
 ```bash
-curl -LO "https://raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/blob/main/Creating%20and%20Alerting%20on%20Logs-based%20Metrics/Rupam.sh"
+curl -LO "https://raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/main/Creating%20and%20Alerting%20on%20Logs-based%20Metrics/Rupam.sh"
 sudo chmod +x Rupam.sh 
 ./Rupam.sh
 ```
