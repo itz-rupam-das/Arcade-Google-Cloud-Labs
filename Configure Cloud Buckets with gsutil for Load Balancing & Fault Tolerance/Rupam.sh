@@ -1,57 +1,85 @@
 #!/bin/bash
 
-# --- Color Definitions ---
-RE='\033[0;31m'
-GR='\033[0;32m'
-YL='\033[1;33m'
-BL='\033[0;34m'
+# --- Color Palettes ---
+BLU='\033[0;34m'
+GRN='\033[0;32m'
+YLW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BL}🚀 Starting deployment...${NC}"
-echo -e "${BL}-----------------------------------${NC}"
+# --- The Spinner Function ---
+# This runs a process in the background and shows a spinning animation
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
 
-# --- Variable Initialization ---
+clear
+echo -e "${BLU}=======================================${NC}"
+echo -e "${BLU}🚀  GCP ULTRA-DEPLOYMENT INITIALIZED  🚀${NC}"
+echo -e "${BLU}=======================================${NC}"
+
+# --- Setup Variables ---
 PROJECT_ID=$(gcloud config get-value project)
 OLD_BUCKET=${PROJECT_ID}-bucket
 NEW_BUCKET=${PROJECT_ID}-new
 
-echo -e "📌 ${YL}Project detected:${NC} $PROJECT_ID"
-echo -e "📦 ${YL}Old bucket:${NC}      $OLD_BUCKET"
-echo -e "🆕 ${YL}New bucket:${NC}      $NEW_BUCKET"
-echo -e "${BL}-----------------------------------${NC}"
+echo -e "📌 ${YLW}Project:${NC} $PROJECT_ID"
+echo -e "📦 ${YLW}Source:${NC}  $OLD_BUCKET"
+echo -e "🆕 ${YLW}Target:${NC}  $NEW_BUCKET"
+echo -e "${BLU}---------------------------------------${NC}"
 
-# --- Storage Configuration ---
-echo -e "🪣  ${GR}Creating new Cloud Storage bucket...${NC}"
-gsutil mb gs://$NEW_BUCKET
+# --- Execution with Spinners ---
 
-echo -e "🌐 ${GR}Enabling website configuration (index & error pages)...${NC}"
-gsutil web set -m index.html -e error.html gs://$NEW_BUCKET
+echo -ne "🪣  Creating New Bucket...          "
+gsutil mb gs://$NEW_BUCKET > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}DONE${NC}"
 
-echo -e "🔓 ${RE}Making bucket public...${NC}"
-gsutil iam ch allUsers:roles/storage.admin gs://$NEW_BUCKET
+echo -ne "🌐 Configuring Web Pages...         "
+gsutil web set -m index.html -e error.html gs://$NEW_BUCKET > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}DONE${NC}"
 
-echo -e "🔄 ${GR}Syncing data from old bucket to new bucket...${NC}"
-gsutil -m rsync -r gs://$OLD_BUCKET gs://$NEW_BUCKET
+echo -ne "🔓 Applying Public Permissions...   "
+gsutil iam ch allUsers:roles/storage.admin gs://$NEW_BUCKET > /dev/null 2>&1 &
+spinner $!
+echo -e "${RED}OPEN${NC}"
 
-# --- Networking & CDN Configuration ---
-echo -e "⚙️  ${GR}Creating backend bucket with CDN enabled...${NC}"
-gcloud compute backend-buckets create backend-new \
-  --gcs-bucket-name=$NEW_BUCKET \
-  --enable-cdn
+echo -ne "🔄 Syncing Data Assets...           "
+gsutil -m rsync -r gs://$OLD_BUCKET gs://$NEW_BUCKET > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}SYNCED${NC}"
 
-echo -e "🗺️  ${GR}Creating URL map...${NC}"
-gcloud compute url-maps create website-map \
-  --default-backend-bucket=backend-new
+echo -ne "⚙️  Enabling CDN Backend...          "
+gcloud compute backend-buckets create backend-new --gcs-bucket-name=$NEW_BUCKET --enable-cdn > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}ACTIVE${NC}"
 
-echo -e "🎯 ${GR}Creating HTTP proxy...${NC}"
-gcloud compute target-http-proxies create website-proxy \
-  --url-map=website-map
+echo -ne "🗺️  Mapping URL Paths...             "
+gcloud compute url-maps create website-map --default-backend-bucket=backend-new > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}MAPPED${NC}"
 
-echo -e "🌍 ${GR}Creating global forwarding rule on port 80...${NC}"
-gcloud compute forwarding-rules create website-rule \
-  --global \
-  --target-http-proxy=website-proxy \
-  --ports=80
+echo -ne "🎯 Setting HTTP Proxy...            "
+gcloud compute target-http-proxies create website-proxy --url-map=website-map > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}TARGETED${NC}"
 
-echo -e "${BL}-----------------------------------${NC}"
-echo -e "✅ ${GR}Deployment completed successfully!${NC}"
+echo -ne "🌍 Finalizing Forwarding Rules...   "
+gcloud compute forwarding-rules create website-rule --global --target-http-proxy=website-proxy --ports=80 > /dev/null 2>&1 &
+spinner $!
+echo -e "${GRN}LIVE${NC}"
+
+echo -e "${BLU}---------------------------------------${NC}"
+echo -e "✅ ${GRN}DEPLOYMENT SUCCESSFUL!${NC}"
+echo -e "${BLU}=======================================${NC}"
