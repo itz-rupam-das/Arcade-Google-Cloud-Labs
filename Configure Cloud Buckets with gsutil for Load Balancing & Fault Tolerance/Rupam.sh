@@ -1,47 +1,75 @@
 #!/bin/bash
 
-echo "🚀 Starting deployment..."
-echo "-----------------------------------"
+# ==============================================================================
+# SCRIPT: deploy-cdn-site.sh
+# DESCRIPTION: Provisions a GCS-backed website with CDN and Load Balancing.
+# SECURITY: Sets allUsers to ObjectViewer (Read-Only), NOT Admin.
+# ==============================================================================
 
+# 1. Error Handling & Formatting
+set -e
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🚀 Initializing Secure Deployment...${NC}"
+
+# 2. Environment Variables
 PROJECT_ID=$(gcloud config get-value project)
-OLD_BUCKET=${PROJECT_ID}-bucket
-NEW_BUCKET=${PROJECT_ID}-new
+TIMESTAMP=$(date +%s)
+NEW_BUCKET="static-site-${TIMESTAMP}" # Ensures uniqueness
+BACKEND_NAME="backend-site-${TIMESTAMP}"
+URL_MAP="website-map-${TIMESTAMP}"
+PROXY_NAME="website-proxy-${TIMESTAMP}"
+FW_RULE="website-rule-${TIMESTAMP}"
 
-echo "📌 Project detected: $PROJECT_ID"
-echo "📦 Old bucket: $OLD_BUCKET"
-echo "🆕 New bucket: $NEW_BUCKET"
-echo "-----------------------------------"
+echo -e "--------------------------------------------------"
+echo -e "  Target Project : ${GREEN}$PROJECT_ID${NC}"
+echo -e "  New Bucket     : ${GREEN}$NEW_BUCKET${NC}"
+echo -e "--------------------------------------------------"
 
-echo "🪣 Creating new Cloud Storage bucket..."
-gsutil mb gs://$NEW_BUCKET
+# 3. Infrastructure Provisioning
+echo -e "\n📦 ${BLUE}Step 1: Creating Storage Bucket...${NC}"
+gcloud storage buckets create gs://"$NEW_BUCKET" \
+    --location=us-central1 \
+    --uniform-bucket-level-access
 
-echo "🌐 Enabling website configuration (index & error pages)..."
-gsutil web set -m index.html -e error.html gs://$NEW_BUCKET
+echo -e "🌐 ${BLUE}Step 2: Configuring Web Settings...${NC}"
+gcloud storage buckets update gs://"$NEW_BUCKET" \
+    --web-index-page=index.html \
+    --web-error-page=error.html
 
-echo "🔓 Making bucket public..."
-gsutil iam ch allUsers:roles/storage.admin gs://$NEW_BUCKET
+echo -e "🔐 ${BLUE}Step 3: Setting Public Permissions (Read-Only)...${NC}"
+gcloud storage buckets add-iam-policy-binding gs://"$NEW_BUCKET" \
+    --member="allUsers" \
+    --role="roles/storage.objectViewer"
 
-echo "🔄 Syncing data from old bucket to new bucket..."
-gsutil -m rsync -r gs://$OLD_BUCKET gs://$NEW_BUCKET
+echo -e "⚙️  ${BLUE}Step 4: Creating Backend Bucket with CDN...${NC}"
+gcloud compute backend-buckets create "$BACKEND_NAME" \
+    --gcs-bucket-name="$NEW_BUCKET" \
+    --enable-cdn \
+    --cache-mode=CACHE_ALL_STATIC
 
-echo "⚙️ Creating backend bucket with CDN enabled..."
-gcloud compute backend-buckets create backend-new \
-  --gcs-bucket-name=$NEW_BUCKET \
-  --enable-cdn
+echo -e "🗺️  ${BLUE}Step 5: Defining URL Map...${NC}"
+gcloud compute url-maps create "$URL_MAP" \
+    --default-backend-bucket="$BACKEND_NAME"
 
-echo "🗺️ Creating URL map..."
-gcloud compute url-maps create website-map \
-  --default-backend-bucket=backend-new
+echo -e "🎯 ${BLUE}Step 6: Creating HTTP Target Proxy...${NC}"
+gcloud compute target-http-proxies create "$PROXY_NAME" \
+    --url-map="$URL_MAP"
 
-echo "🎯 Creating HTTP proxy..."
-gcloud compute target-http-proxies create website-proxy \
-  --url-map=website-map
+echo -e "🌍 ${BLUE}Step 7: Establishing Global Forwarding Rule...${NC}"
+gcloud compute forwarding-rules create "$FW_RULE" \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
+    --address-region=global \
+    --global \
+    --target-http-proxy="$PROXY_NAME" \
+    --ports=80
 
-echo "🌍 Creating global forwarding rule on port 80..."
-gcloud compute forwarding-rules create website-rule \
-  --global \
-  --target-http-proxy=website-proxy \
-  --ports=80
-
-echo "-----------------------------------"
-echo "✅ Deployment completed successfully!"
+# 4. Final Verification
+echo -e "\n--------------------------------------------------"
+echo -e "✅ ${GREEN}DEPLOYMENT COMPLETE${NC}"
+echo -e "🔗 ${BLUE}Your IP Address:${NC} $(gcloud compute forwarding-rules describe "$FW_RULE" --global --format='value(IPAddress)')"
+echo -e "--------------------------------------------------"
