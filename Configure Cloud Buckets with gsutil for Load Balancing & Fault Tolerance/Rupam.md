@@ -16,8 +16,8 @@
 ## ☁️ Run in Cloud Shell:
 ```bash
 curl -LO "https://raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/main/Configure%20Cloud%20Buckets%20with%20gsutil%20for%20Load%20Balancing%20%26%20Fault%20Tolerance/Rupam.sh"
-sudo chmod +x Rupam.sh 
-./Rupam.sh
+
+source Rupam.sh
 ```
 
 
