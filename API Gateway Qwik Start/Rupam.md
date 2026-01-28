@@ -15,8 +15,8 @@
 ## ☁️ Run in Cloud Shell:
 
 ```bash
-curl -LO "https://raw.githubusercontent.com/"
-sudo chmod +x Rupam.sh
+curl -LO "https://raw.githubusercontent.com/itz-rupam-das/Arcade-Google-Cloud-Labs/blob/main/API%20Gateway%20Qwik%20Start/Rupam.sh"
+sudo chmod +x Rupam.sh 
 ./Rupam.sh
 ```
 ---
