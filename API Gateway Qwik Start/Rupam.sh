@@ -22,9 +22,6 @@ echo "${BLUE_TEXT}${BOLD_TEXT}         INITIATING EXECUTION...        ${RESET_FO
 echo "${BLUE_TEXT}${BOLD_TEXT}  Welcome to Rupam's Cloud Lab  ${RESET_FORMAT}"
 echo "${BLUE_TEXT}${BOLD_TEXT}=======================================${RESET_FORMAT}"
 echo
-echo "${CYAN_TEXT}Please like, share and subscribe to:${RESET_FORMAT}"
-echo "${MAGENTA_TEXT}https://www.youtube.com/@drabhishek.5460/videos${RESET_FORMAT}"
-echo
 
 # Instruction for entering the region
 read -p "${YELLOW_TEXT}${BOLD_TEXT}Enter the region:${RESET_FORMAT} " REGION
